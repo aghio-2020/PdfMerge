@@ -9,10 +9,6 @@
 #include <pdfio.h>
 #include <pdfio-content.h>
 
-// Pequeña herramienta que ingresa nombres de archivos pdf, verifica que tengan extension .pdf y los une en un nuevo pdf
-// Recibe los pdfs que se van a usar y al final el nombre del pdf que se va a crear a partir de los mismos
-
-// Clase para almacenar datos del pdf y operaciones comunes
 struct PDF_Data
 {
 public:
