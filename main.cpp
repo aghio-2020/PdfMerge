@@ -27,7 +27,7 @@ public:
         pdfio_rect_t media_box = { 0.0, 0.0, 612.0, 792.0 };  // US Letter
         pdfio_rect_t crop_box = { 36.0, 36.0, 576.0, 756.0 }; // w/0.5" margins
 
-        myPdfFile = pdfioFileCreate(myPdfName.c_str(), myPdfVersion.c_str(), NULL, NULL, NULL, NULL);
+        myPdfFile = pdfioFileCreate(myPdfName.c_str(), myPdfVersion.c_str(), &media_box, &crop_box, NULL, NULL);
         std::vector<pdfio_file_t*> pdfFiles;
 
         unsigned int numFiles = pdfFileNames.size();
