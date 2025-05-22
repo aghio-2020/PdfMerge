@@ -82,6 +82,7 @@ bool CheckArgs(int argc, char *argv[], std::string &errorMessage)
         // for now don't support changing version
         if (argument == "-v")
         {
+	    return false;
             if (i + 1 < argc)
             {
                 std::regex versionPattern(R"(\d+\.\d+)");
