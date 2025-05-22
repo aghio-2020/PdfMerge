@@ -5,49 +5,66 @@
 #include <sstream>
 #include <cstring>
 #include <regex>
+#include <filesystem>
 
 #include <pdfio.h>
 #include <pdfio-content.h>
 
-struct PDF_Data
+bool error_cb(pdfio_file_t *pdf, const char *message, void *data)
 {
-public:
-    PDF_Data(const char* name, const char* version) 
-    : myPdfName(name)
-    , myPdfVersion(version)
-    , myNumPages(0)
-    {}
+  (void)data; // This callback does not use the data pointer
 
-    void MergePdfFiles(std::vector<std::string> &pdfFileNames)
-    {   
-        pdfio_rect_t media_box = { 0.0, 0.0, 612.0, 792.0 };  // US Letter
-        pdfio_rect_t crop_box = { 36.0, 36.0, 576.0, 756.0 }; // w/0.5" margins
+  fprintf(stderr, "%s: %s\n", pdfioFileGetName(pdf), message);
 
-        myPdfFile = pdfioFileCreate(myPdfName.c_str(), myPdfVersion.c_str(), &media_box, &crop_box, NULL, NULL);
-        std::vector<pdfio_file_t*> pdfFiles;
+  // Return true for warning messages (continue) and false for errors (stop)
+  return (!strncmp(message, "WARNING:", 8));
+}
 
-        unsigned int numFiles = pdfFileNames.size();
-        for (unsigned int i = 0; i < numFiles; i++)
-        {
-            pdfio_file_t* pdfReadFile = pdfioFileOpen(pdfFileNames[i].c_str(), NULL, NULL, NULL, NULL);
-            size_t numPages = pdfioFileGetNumPages(pdfReadFile);
-            for (unsigned int j = 0; j < numPages; j++)
-            {
-                pdfio_obj_t* page = pdfioFileGetPage(pdfReadFile, j);
-                pdfioPageCopy(myPdfFile, page);
-            }
-            pdfioFileClose(pdfReadFile);
-        }
+bool MergePdfFiles(const char* basePdfName, const char* version, std::vector<std::string> const& pdfFilesToMerge)
+{   
+    pdfio_rect_t media_box = { 0.0, 0.0, 612.0, 792.0 };  // US Letter
+    pdfio_rect_t crop_box = { 36.0, 36.0, 576.0, 756.0 }; // w/0.5" margins
+    char* error_data = nullptr;
+    bool result = true;
 
-        pdfioFileClose(myPdfFile);
+    pdfio_file_t* basePdfFile = pdfioFileCreate(basePdfName, version, &media_box, &crop_box, error_cb, error_data);
+    
+
+    if (!basePdfFile)
+    {
+        std::cout << "error creating pdf: " << error_data << "\n";
+        return false;
     }
 
-private:
-    pdfio_file_t *myPdfFile;
-    std::string myPdfName;
-    std::string myPdfVersion;
-    int myNumPages;
-};
+    for (auto& pdfName : pdfFilesToMerge)
+    {
+        std::filesystem::path absolutePath = std::filesystem::absolute(pdfName);
+        std::cout << "merging pdf file: " << absolutePath.string() << "\n";
+
+        pdfio_file_t* pdfReadFile = pdfioFileOpen(absolutePath.string().data(), NULL, NULL, error_cb, error_data);
+        if (!pdfReadFile)
+        {
+            std::cout << "error reading file: " << error_data << "\n";
+            return false;
+        }
+        size_t numPages = pdfioFileGetNumPages(pdfReadFile);
+
+        for (unsigned int j = 0; j < numPages - 1; j++)
+        {
+            pdfio_obj_t* page = pdfioFileGetPage(pdfReadFile, j);
+            if (!page)
+            {
+                std::cout << "page load error\n";
+                return false;
+            }
+            pdfioPageCopy(basePdfFile, page);
+        }
+        pdfioFileClose(pdfReadFile);
+    }
+
+    pdfioFileClose(basePdfFile);
+    return result;
+}
 
 bool CheckArgs(int argc, char *argv[], std::string &errorMessage)
 {
@@ -58,28 +75,25 @@ bool CheckArgs(int argc, char *argv[], std::string &errorMessage)
         oss << "Too few arguments, use -h for help\n";
     }
 
-    for (unsigned int i = 1; i <= argc; i++)
+    for (unsigned int i = 1; i < argc; i++)
     {
         std::string argument = argv[i];
+
+        // for now don't support changing version
         if (argument == "-v")
         {
             if (i + 1 < argc)
             {
                 std::regex versionPattern(R"(\d+\.\d+)");
-                if (std::regex_match(argv[++i], versionPattern))
+                if (!std::regex_match(argv[++i], versionPattern))
                 {
-                    i++;
-                }
-                else
-                {
-                    oss << argv[i] << " is not a valid version\n"; 
+                    oss << argv[i] << " is not a valid version\n";
                 }
             }
             else
             {
                 oss << "Missing arguments, use -h for help\n";
             }
-
             continue;
         }
 
@@ -106,43 +120,41 @@ bool CheckArgs(int argc, char *argv[], std::string &errorMessage)
 void AskHelp()
 {
     std::cout << "Usage:\n"
-    << "pdfMerge [PDFFILE] ... [PDFFILE] -v [n.n] [PDFFILENAME]\n"
-    << "use -h for help\n"
-    << "use -v to specify the pdf version (OPTIONAL)\n";
+    << "pdfMerge <PDFFILE1> ... <PDFFILEn> <NEWPDF>\n"
+    << "use -h for help\n";
 }
 
 int main(int argc, char *argv[])
 {
-    if (argc == 1 || strcmp(argv[1], "-h") == 0)
+    if (argc == 1 || (strcmp(argv[1], "-h") == 0))
     {
         AskHelp();
         return 0;
     }
 
     std::string errorMessage;
-    if (!CheckArgs(--argc, argv, errorMessage))
+    if (!CheckArgs(argc, argv, errorMessage))
     {
         std::cout << errorMessage;
-        return -2;
+        return -1;
     }
-
-    char *version = (char*)malloc(sizeof(char) * 5);
-    if (strcmp(argv[argc - 2], "-v") == 0)
-        strcpy(version, argv[argc - 1]);
-    else
-        strcpy(version, "2.0");
 
     std::vector<std::string> pdfFileNames;
-    for (unsigned int i = 1; i < argc; i++)
+    for (unsigned int i = 1; i < argc - 1; i++)
     {
-        if (strcmp(argv[i], "-v") == 0)
-            break;
-        pdfFileNames.push_back(argv[i]);
-        std::cout << i << " ";
+        pdfFileNames.emplace_back(argv[i]);
     }
 
-    PDF_Data pdfFile(argv[argc], version);
-    pdfFile.MergePdfFiles(pdfFileNames);
+    std::string version = "2.0";
+    std::string pdfName = argv[argc - 1];
+    std::cout << pdfName << " " << version << "\n";
+    int count = 0;
+    for(auto& pdf : pdfFileNames)
+    {
+        std::cout << count++ << " -- ";
+        std::cout << pdf << "\n";
+    }
+    MergePdfFiles(pdfName.c_str(), version.c_str(), pdfFileNames);
 
     return 0;
 }
