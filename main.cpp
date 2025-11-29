@@ -49,7 +49,7 @@ bool MergePdfFiles(const char* basePdfName, const char* version, std::vector<std
         }
         size_t numPages = pdfioFileGetNumPages(pdfReadFile);
 
-        for (unsigned int j = 0; j < numPages - 1; j++)
+        for (unsigned int j = 0; j < numPages; j++)
         {
             pdfio_obj_t* page = pdfioFileGetPage(pdfReadFile, j);
             if (!page)
