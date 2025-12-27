@@ -1,7 +1,14 @@
-CFLAGS = -std=c++17 -Idependencies/include 
+# Detect OS
+ifeq ($(OS),Windows_NT)
+    PLATFORM = windows
+    PDFIO_LIB = pdfio1
+else
+    PLATFORM = linux
+    PDFIO_LIB = pdfio
+endif
 
-PDFIO_LIBDIR = $(CURDIR)/dependencies/pdfio
-PDFIO_LIB = pdfio1
+CFLAGS = -std=c++17 -I$(CURDIR)/dependencies/$(PLATFORM)/include
+PDFIO_LIBDIR = $(CURDIR)/dependencies/$(PLATFORM)/lib
 
 SOURCES = main.cpp
 OBJ_DIR = $(CURDIR)/obj
@@ -12,15 +19,12 @@ TARGET = ${OUTPUT_DIR}/pdfMerge
 
 all: $(TARGET)
 
-$(TARGET): $(OBJS) $(OUTPUT_DIR) copy_dlls 
-	g++ $(CFLAGS) -L$(PDFIO_LIBDIR) -o $(TARGET) $(OBJS) -l$(PDFIO_LIB)
+$(TARGET): $(OBJS) $(OUTPUT_DIR)
+	g++ $(CFLAGS) -o $(TARGET) $(OBJS) -L$(PDFIO_LIBDIR) -Wl,-rpath,$(PDFIO_LIBDIR) -l$(PDFIO_LIB) -lz
 
 $(OBJ_DIR)/%.o: %.cpp | $(OBJ_DIR)
 	g++ $(CFLAGS) -c $< -o $@
 
-copy_dlls:
-	cp $(PDFIO_LIBDIR)/pdfio1.dll $(OUTPUT_DIR)
-	cp $(PDFIO_LIBDIR)/zlibd.dll $(OUTPUT_DIR)
 
 $(OBJ_DIR):
 	mkdir $(OBJ_DIR)
